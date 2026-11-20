@@ -87,8 +87,10 @@ FixSelection(*) {
     ; לחיצה חוזרת מיד אחרי המרה: עוברים לשפה הבאה
     repeat := IsObject(Last) && A_TickCount - Last.t < 8000 && KeyCount - Last.keys <= 1
     if repeat {
+        ; מוחקים את ההמרה הקודמת עם Backspace. לא מסמנים עם Shift+Left,
+        ; כי בטקסט מימין לשמאל (עברית, ערבית) החץ זז קדימה ולא אחורה
         n := StrLen(Last.out)
-        Send "+{Left " n "}"
+        Send "{Backspace " n "}"
         Sleep 40
         orig := Last.orig, src := Last.src, idx := Last.idx + 1
     } else {
