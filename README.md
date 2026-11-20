@@ -1,40 +1,45 @@
 # ReverseLang
 
-הקלדת "akuo" במקום "שלום"? מסמנים, לוחצים **Ctrl+Shift+E**, והטקסט מתהפך לשפה הנכונה. גם שפת המקלדת מתחלפת. עובד עם כל שפת מקלדת שמותקנת ב-Windows: עברית, אנגלית, ערבית, רוסית, צרפתית, ספרדית ועוד.
+Typed "akuo" when you meant "שלום"? Select it, press **Ctrl+Shift+E**, and the text flips to the right language. The keyboard layout switches too, so you can keep typing. Works with any keyboard language installed in Windows: Hebrew, English, Arabic, Russian, French, Spanish and more.
 
-## התקנה
-1. הורד את ReverseLang.zip מעמוד ה-Releases או מ-https://cv.work-it.uk, וחלץ את התיקייה למקום קבוע (לא Downloads)
-2. לחיצה כפולה על `ReverseLang.exe`. לא צריך להתקין AutoHotkey
-3. `ReverseLang.exe` הוא קובץ ההרצה הרשמי של AutoHotkey v2, אחרי שינוי שם. הוא טוען לבד את `ReverseLang.ahk` מאותה תיקייה, אז צריך להשאיר את כל הקבצים יחד
+## Install
+1. Download ReverseLang.zip from the Releases page or from https://cv.work-it.uk, and extract the folder somewhere permanent (not Downloads).
+2. Double-click `ReverseLang.exe`. No AutoHotkey install needed.
+3. `ReverseLang.exe` is the official AutoHotkey v2 executable, renamed. It loads `ReverseLang.ahk` from the same folder automatically, so keep all the files together.
 
-## שימוש
-- **עם סימון**: מסמנים טקסט ולוחצים על הקיצור
-- **בלי סימון**: ממיר מתחילת השורה עד הסמן (אפשר לשנות למילה האחרונה)
-- **מצב אוטומטי** (כבוי כברירת מחדל, מדליקים בתפריט המגש): אחרי כל רווח בודק את המילה. ממיר רק אם היא לא מילה בשפה שהוקלדה, והגרסה המומרת כן מילה בשפה השנייה (מילונים של כ-38 אלף מילים לכל שפה). מילים קצרות מ-3 אותיות לא נבדקות.
-- מילה שמומרת סתם? הוסף אותה ל"רשימת חריגים" בתפריט.
+## Usage
+- **With a selection**: select text and press the shortcut.
+- **Without a selection**: converts from the start of the line to the cursor (can be changed to the last word).
+- **Auto-fix** (off by default, turn it on from the tray menu): after every space, checks the last word. It converts only if the word is not a real word in the language it was typed in, and the converted version is a real word in the other language (dictionaries of about 38,000 words per language). Words shorter than 3 letters are skipped.
+- A word keeps getting converted by mistake? Add it to the exceptions list from the tray menu.
 
-## כמה שפות
-- ReverseLang קורא מ-Windows את המיפוי של כל מקלדת מותקנת, כך שאין טבלאות קבועות.
-- לחיצה על הקיצור ממירה לשפה הראשונה ברשימה (חוץ מזו שבה הוקלד הטקסט). לחיצה חוזרת מיד אחרי זה עוברת לשפה הבאה, ואחרי האחרונה חוזרים לטקסט המקורי.
-- בחלון ההגדרות, בלשונית "שפות": מסמנים אילו שפות להשתתף במעבר, וקובעים את הסדר. "הוסף שפה..." פותח את הגדרות השפה של Windows, ואחרי ההתקנה לוחצים "רענן".
-- כשכמה שפות באותו כתב (אנגלית, צרפתית, ספרדית), המקור נבחר לפי שפת המקלדת הפעילה.
-- ההמרה האוטומטית תוך כדי הקלדה עובדת רק בין עברית לאנגלית.
+## Multiple languages
+- ReverseLang reads the key mapping of every installed keyboard from Windows, so there are no hard-coded tables.
+- The shortcut converts to the first language in the list (other than the one the text was typed in). Press it again right away to move to the next language. After the last one you get the original text back.
+- In Settings, on the Languages tab: tick the languages to cycle through and set their order. "Add language..." opens the Windows language settings. After installing a language there, click "Refresh".
+- "Refresh" reloads the list from Windows and removes unticked languages. "Show all" brings them back.
+- When several languages share a script (English, French, Spanish), the source language is taken from the active keyboard layout.
+- Auto-fix while typing works between Hebrew and English only.
 
-## הגדרות
-לחיצה כפולה על האייקון במגש פותחת חלון הגדרות: קיצור, פריסות, מצב אוטומטי, חריגים והיסטוריית המרות. אפשר עדיין לערוך ידנית:
+## Settings
+Double-click the tray icon to open Settings: shortcut, languages, auto-fix, exceptions and conversion history. You can still edit the file by hand:
 
 ## settings.ini
-| מפתח | משמעות |
+| Key | Meaning |
 |---|---|
-| Hotkey | קיצור. `^`=Ctrl `!`=Alt `+`=Shift `#`=Win. ברירת מחדל `^+e` |
+| Hotkey | Shortcut. `^`=Ctrl `!`=Alt `+`=Shift `#`=Win. Default `^+e` |
 | AutoMode | 1/0 |
-| AutoMinLength | אורך מילה מינימלי במצב אוטומטי |
-| NoSelection | `line` או `word` |
-| Languages | השפות הפעילות לפי סדר המעבר (קודי HKL). נקבע מחלון ההגדרות |
+| AutoMinLength | Minimum word length for auto-fix |
+| NoSelection | `line` or `word` |
+| Languages | Active languages in cycle order (HKL codes). Set from Settings |
+| HiddenLanguages | Languages removed from the list with Refresh |
 
-אחרי שינוי: "טען מחדש" בתפריט.
+After editing, choose "Reload" from the tray menu.
 
-## קובץ EXE יחיד
-אם מותקן אצלך AutoHotkey v2 עם Ahk2Exe, מריצים:
+## Single EXE
+If you have AutoHotkey v2 with Ahk2Exe installed, run:
 `Ahk2Exe.exe /in ReverseLang.ahk /out ReverseLang.exe`
-גם אז צריך להשאיר את en.txt ו-he.txt ליד ה-exe.
+You still need to keep en.txt and he.txt next to the exe.
+
+## License
+[MIT](LICENSE). AutoHotkey is licensed separately, see `AutoHotkey-license.txt`.

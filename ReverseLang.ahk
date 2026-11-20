@@ -24,6 +24,7 @@ global CfgNoSel    := IniRead(INI, "General", "NoSelection", "line")   ; line | 
 global CfgEnKLID   := IniRead(INI, "General", "EnglishKLID", "00000409")
 global CfgHeKLID   := IniRead(INI, "General", "HebrewKLID", "0000040D")
 global CfgLangs    := IniRead(INI, "General", "Languages", "")   ; HKL בהקסה, מופרדים בפסיק, לפי סדר המעבר
+global CfgHidden   := IniRead(INI, "General", "HiddenLanguages", "")
 global Layouts     := LoadLayouts()
 if !FileExist(INI)
     SaveSettings()
@@ -37,25 +38,25 @@ global Except := LoadDict(A_ScriptDir "\exceptions.txt")
 A_IconTip := "ReverseLang - " HotkeyLabel(CfgHotkey)
 tray := A_TrayMenu
 tray.Delete()
-tray.Add("הגדרות...", ShowSettings)
-tray.Default := "הגדרות..."
+tray.Add("Settings...", ShowSettings)
+tray.Default := "Settings..."
 tray.Add()
-tray.Add("המרה אוטומטית תוך כדי הקלדה", ToggleAuto)
-tray.Add("הפעלה עם Windows", ToggleStartup)
+tray.Add("Auto-fix while typing", ToggleAuto)
+tray.Add("Start with Windows", ToggleStartup)
 tray.Add()
-tray.Add("פתח קובץ הגדרות", (*) => Run('notepad.exe "' INI '"'))
-tray.Add("פתח רשימת חריגים", OpenExceptions)
-tray.Add("טען מחדש", (*) => Reload())
+tray.Add("Open settings file", (*) => Run('notepad.exe "' INI '"'))
+tray.Add("Open exceptions list", OpenExceptions)
+tray.Add("Reload", (*) => Reload())
 tray.Add()
-tray.Add("יציאה", (*) => ExitApp())
+tray.Add("Exit", (*) => ExitApp())
 if CfgAuto
-    tray.Check("המרה אוטומטית תוך כדי הקלדה")
+    tray.Check("Auto-fix while typing")
 if FileExist(A_Startup "\ReverseLang.lnk")
-    tray.Check("הפעלה עם Windows")
+    tray.Check("Start with Windows")
 
 try Hotkey(CfgHotkey, FixSelection)
 catch {
-    MsgBox "קיצור המקלדת '" CfgHotkey "' לא תקין. בדוק את settings.ini", "ReverseLang", 48
+    MsgBox "The shortcut '" CfgHotkey "' is not valid. Check settings.ini", "ReverseLang", 48
 }
 
 global ih := "", wordBuf := "", History := [], SetGui := ""
@@ -64,7 +65,7 @@ StartKeyCounter()
 if CfgAuto
     StartAuto()
 
-ToolTip "ReverseLang פועל. קיצור: " HotkeyLabel(CfgHotkey)
+ToolTip "ReverseLang is running. Shortcut: " HotkeyLabel(CfgHotkey)
 SetTimer () => ToolTip(), -2500
 return
 
@@ -78,7 +79,7 @@ FixSelection(*) {
     SendLevel 1   ; ההקשות שלנו לא נספרות כהקלדה של המשתמש
     act := ActiveLangs()
     if (act.Length < 2) {
-        ShowTip("צריך לפחות שתי שפות מקלדת פעילות")
+        ShowTip("Select at least two keyboard languages in Settings")
         return
     }
     saved := ClipboardAll()
@@ -118,6 +119,17 @@ FixSelection(*) {
         idx := 1
     tgt := targets[idx]
     out := tgt.id = src.id ? orig : ConvertLayout(orig, src, tgt)
+    ; מדלגים על שפות שההמרה אליהן לא משנה כלום
+    while (out == orig && tgt.id != src.id && idx < targets.Length) {
+        idx++
+        tgt := targets[idx]
+        out := tgt.id = src.id ? orig : ConvertLayout(orig, src, tgt)
+    }
+    if (out == orig && !repeat) {
+        A_Clipboard := saved
+        ShowTip("Nothing to convert")
+        return
+    }
 
     A_Clipboard := StrReplace(out, "`n", "`r`n")
     Send "^v"
@@ -141,22 +153,37 @@ FixSelection(*) {
 ;  שפות מקלדת: המיפוי נבנה מ-Windows לכל פריסה מותקנת
 ; ==========================================================
 LoadLayouts() {
-    list := []
+    ; רשימת שפות הקלט כפי שהיא מוגדרת ב-Windows
+    list := [], seen := Map()
+    Loop 30 {
+        try klid := RegRead("HKCU\Keyboard Layout\Preload", String(A_Index))
+        catch
+            continue
+        try klid := RegRead("HKCU\Keyboard Layout\Substitutes", klid)
+        hkl := DllCall("LoadKeyboardLayoutW", "Str", klid, "UInt", 0x80, "Ptr")   ; KLF_NOTELLSHELL
+        if !hkl
+            continue
+        L := BuildLayout(hkl, klid)
+        if (L.c2k.Count > 20 && !seen.Has(L.id))
+            list.Push(L), seen[L.id] := 1
+    }
+    if list.Length
+        return list
+    ; גיבוי: מה שטעון כרגע
     n := DllCall("GetKeyboardLayoutList", "Int", 0, "Ptr", 0, "Int")
     if (n <= 0)
         return list
     buf := Buffer(n * A_PtrSize, 0)
     DllCall("GetKeyboardLayoutList", "Int", n, "Ptr", buf, "Int")
     Loop n {
-        hkl := NumGet(buf, (A_Index - 1) * A_PtrSize, "Ptr")
-        L := BuildLayout(hkl)
+        L := BuildLayout(NumGet(buf, (A_Index - 1) * A_PtrSize, "Ptr"))
         if (L.c2k.Count > 20)
             list.Push(L)
     }
     return list
 }
 
-BuildLayout(hkl) {
+BuildLayout(hkl, klid := "") {
     k2c := Map(), c2k := Map()
     ks := Buffer(256, 0), zero := Buffer(256, 0), out := Buffer(32, 0)
     for shift in [0, 1] {
@@ -187,14 +214,34 @@ BuildLayout(hkl) {
             vk++
         }
     }
-    return {hkl: hkl, id: Format("{:08X}", hkl & 0xFFFFFFFF), name: LayoutName(hkl), k2c: k2c, c2k: c2k}
+    return {hkl: hkl, id: Format("{:08X}", hkl & 0xFFFFFFFF), name: LayoutName(hkl, klid), k2c: k2c, c2k: c2k}
 }
 
-LayoutName(hkl) {
+LayoutName(hkl, klid := "") {
     nb := Buffer(256, 0)
-    DllCall("GetLocaleInfoW", "UInt", hkl & 0xFFFF, "UInt", 0x2, "Ptr", nb, "Int", 128)
-    name := StrGet(nb, "UTF-16")
-    return name != "" ? name : Format("{:08X}", hkl & 0xFFFFFFFF)
+    DllCall("GetLocaleInfoW", "UInt", hkl & 0xFFFF, "UInt", 0x72, "Ptr", nb, "Int", 128)   ; LOCALE_SENGLISHDISPLAYNAME
+    lang := StrGet(nb, "UTF-16")
+    if (klid = "")
+        klid := KlidFromHkl(hkl)
+    kb := ""
+    try kb := RegRead("HKLM\SYSTEM\CurrentControlSet\Control\Keyboard Layouts\" klid, "Layout Text")
+    if (lang = "")
+        lang := Format("{:08X}", hkl & 0xFFFFFFFF)
+    return kb != "" ? lang " - " kb : lang
+}
+
+KlidFromHkl(hkl) {
+    hi := (hkl >> 16) & 0xFFFF
+    if ((hi & 0xF000) != 0xF000)
+        return Format("{:08X}", hi)
+    want := Format("{:04x}", hi & 0x0FFF)
+    Loop Reg, "HKLM\SYSTEM\CurrentControlSet\Control\Keyboard Layouts", "K" {
+        id := ""
+        try id := RegRead(A_LoopRegKey "\" A_LoopRegName, "Layout Id")
+        if (id = want)
+            return A_LoopRegName
+    }
+    return ""
 }
 
 ActiveLangs() {
@@ -209,12 +256,21 @@ ActiveLangs() {
 }
 
 GuessSource(txt, act) {
-    ; השפה שבה הוקלד הטקסט: זו שמכסה הכי הרבה תווים.
-    ; בתיקו (למשל אנגלית/צרפתית/ספרדית) מעדיפים את שפת המקלדת הפעילה, אחר כך את סדר הרשימה
+    ; השפה שבה הוקלד הטקסט, מבין כל השפות המותקנות: זו שמכסה הכי הרבה תווים.
+    ; בתיקו מעדיפים את שפת המקלדת הפעילה, אחר כך שפות פעילות לפי הסדר
     tid := DllCall("GetWindowThreadProcessId", "Ptr", WinExist("A"), "Ptr", 0, "UInt")
     cur := Format("{:08X}", DllCall("GetKeyboardLayout", "UInt", tid, "Ptr") & 0xFFFFFFFF)
-    best := act[1], bestScore := -1
-    for L in act {
+    cands := act.Clone()
+    for L in Layouts {
+        inAct := false
+        for A in act
+            if (A.id = L.id)
+                inAct := true
+        if !inAct
+            cands.Push(L)
+    }
+    best := cands[1], bestScore := -1
+    for L in cands {
         score := 0
         Loop Parse txt {
             if (A_LoopField ~= "[\s\d]")
@@ -418,7 +474,7 @@ ToggleStartup(item, *) {
 OpenExceptions(*) {
     p := A_ScriptDir "\exceptions.txt"
     if !FileExist(p)
-        FileAppend "# מילה בכל שורה. מילים כאן לא יומרו אוטומטית`n", p, "UTF-8"
+        FileAppend "# One word per line. These words are never auto-fixed`n", p, "UTF-8"
     Run 'notepad.exe "' p '"'
 }
 
@@ -430,6 +486,7 @@ SaveSettings() {
     IniWrite CfgEnKLID, INI, "General", "EnglishKLID"
     IniWrite CfgHeKLID, INI, "General", "HebrewKLID"
     IniWrite CfgLangs, INI, "General", "Languages"
+    IniWrite CfgHidden, INI, "General", "HiddenLanguages"
 }
 
 HotkeyLabel(hk) {
@@ -463,48 +520,49 @@ ShowSettings(*) {
         SetGui.Show()
         return
     }
-    g := Gui("+E0x400000 -MaximizeBox", "ReverseLang - הגדרות")
+    g := Gui("-MaximizeBox", "ReverseLang - Settings")
     g.SetFont("s10", "Segoe UI")
     g.OnEvent("Close", (*) => CloseSettings())
     g.OnEvent("Escape", (*) => CloseSettings())
-    tab := g.Add("Tab3", "x10 y10 w460 h330", ["כללי", "שפות", "המרה אוטומטית", "היסטוריה"])
+    tab := g.Add("Tab3", "x10 y10 w460 h330", ["General", "Languages", "Auto-fix", "History"])
 
     tab.UseTab(1)
-    g.Add("Text", "x30 y55 w160", "קיצור מקלדת:")
+    g.Add("Text", "x30 y55 w160", "Shortcut:")
     g.Add("Hotkey", "x200 y51 w250 vHk", CfgHotkey)
-    g.Add("Text", "x30 y90 w160", "בלי טקסט מסומן, המר את:")
+    g.Add("Text", "x30 y90 w160", "With no selection, convert:")
     g.Add("DropDownList", "x200 y86 w250 vNoSel Choose" (CfgNoSel = "word" ? 2 : 1),
-        ["השורה עד הסמן", "המילה האחרונה"])
+        ["The line up to the cursor", "The last word"])
     g.Add("Checkbox", "x30 y130 w420 vStartup" (FileExist(A_Startup "\ReverseLang.lnk") ? " Checked" : ""),
-        "הפעלה אוטומטית עם Windows")
-    g.Add("Text", "x30 y170 w420 cGray", "לחיצה חוזרת על הקיצור מיד אחרי המרה עוברת לשפה הבאה ברשימה. אחרי השפה האחרונה חוזרים לטקסט המקורי.")
+        "Start with Windows")
+    g.Add("Text", "x30 y170 w420 cGray", "Press the shortcut again right after a conversion to move to the next language. After the last one you get the original text back.")
 
     tab.UseTab(2)
-    g.Add("Text", "x30 y50 w420", "השפות שמותקנות ב-Windows. מסמנים את מה שרוצים, והסדר קובע את סדר המעבר בלחיצות חוזרות.")
-    g.Add("ListView", "x30 y95 w300 h190 vLangs Checked -Hdr -Multi NoSortHdr", ["שפה"])
-    g.Add("Button", "x340 y95 w110", "למעלה").OnEvent("Click", (*) => MoveLang(-1))
-    g.Add("Button", "x340 y130 w110", "למטה").OnEvent("Click", (*) => MoveLang(1))
-    g.Add("Button", "x340 y185 w110", "הוסף שפה...").OnEvent("Click", (*) => Run("ms-settings:regionlanguage"))
-    g.Add("Button", "x340 y220 w110", "רענן").OnEvent("Click", (*) => RefreshLangs())
-    g.Add("Text", "x30 y292 w420 cGray", "שפה חדשה מוסיפים ב-Windows, ואז לוחצים על רענן.")
+    g.Add("Text", "x30 y50 w420", "Keyboard languages installed in Windows. Tick the ones to use; the order sets the cycle order for repeated presses.")
+    g.Add("ListView", "x30 y95 w300 h190 vLangs Checked -Hdr -Multi NoSortHdr", ["Language"])
+    g.Add("Button", "x340 y95 w110", "Move up").OnEvent("Click", (*) => MoveLang(-1))
+    g.Add("Button", "x340 y130 w110", "Move down").OnEvent("Click", (*) => MoveLang(1))
+    g.Add("Button", "x340 y185 w110", "Add language...").OnEvent("Click", (*) => Run("ms-settings:regionlanguage"))
+    g.Add("Button", "x340 y220 w110", "Refresh").OnEvent("Click", (*) => RefreshLangs())
+    g.Add("Button", "x340 y255 w110", "Show all").OnEvent("Click", (*) => ShowAllLangs())
+    g.Add("Text", "x30 y292 w420 cGray", "Refresh reloads the list from Windows and removes unticked languages. Show all brings them back.")
 
     tab.UseTab(3)
-    g.Add("Checkbox", "x30 y55 w420 vAuto" (CfgAuto ? " Checked" : ""), "פעיל (עברית ואנגלית בלבד)")
-    g.Add("Text", "x30 y90 w160", "אורך מילה מינימלי:")
+    g.Add("Checkbox", "x30 y55 w420 vAuto" (CfgAuto ? " Checked" : ""), "Enabled (Hebrew and English only)")
+    g.Add("Text", "x30 y90 w160", "Minimum word length:")
     g.Add("Edit", "x200 y86 w60 Number vMinLen")
     g.Add("UpDown", "Range2-10", CfgMinLen)
-    g.Add("Text", "x30 y125 w420", "מילים שלא יומרו אף פעם (מילה בשורה):")
+    g.Add("Text", "x30 y125 w420", "Never auto-fix these words (one per line):")
     exc := FileExist(A_ScriptDir "\exceptions.txt") ? FileRead(A_ScriptDir "\exceptions.txt", "UTF-8") : ""
     g.Add("Edit", "x30 y150 w420 h170 Multi vExc", exc)
 
     tab.UseTab(4)
-    g.Add("ListView", "x30 y50 w420 h230 vHist -Multi", ["שעה", "מקור", "אחרי המרה"])
-    g.Add("Button", "x30 y290 w205", "העתק את המקור").OnEvent("Click", (*) => CopyHist("src"))
-    g.Add("Button", "x245 y290 w205", "העתק את ההמרה").OnEvent("Click", (*) => CopyHist("dst"))
+    g.Add("ListView", "x30 y50 w420 h230 vHist -Multi", ["Time", "Original", "Converted"])
+    g.Add("Button", "x30 y290 w205", "Copy original").OnEvent("Click", (*) => CopyHist("src"))
+    g.Add("Button", "x245 y290 w205", "Copy converted").OnEvent("Click", (*) => CopyHist("dst"))
 
     tab.UseTab()
-    g.Add("Button", "x250 y350 w105 Default", "שמור").OnEvent("Click", (*) => SaveFromGui())
-    g.Add("Button", "x365 y350 w105", "ביטול").OnEvent("Click", (*) => CloseSettings())
+    g.Add("Button", "x250 y350 w105 Default", "Save").OnEvent("Click", (*) => SaveFromGui())
+    g.Add("Button", "x365 y350 w105", "Cancel").OnEvent("Click", (*) => CloseSettings())
     SetGui := g
     FillLangs(ActiveIds())
     FillHistory()
@@ -518,16 +576,25 @@ ActiveIds() {
     return ids
 }
 
+IsHidden(id) {
+    for h in StrSplit(CfgHidden, ",", " ")
+        if (h = id)
+            return true
+    return false
+}
+
 FillLangs(checkedIds) {
     global GuiOrder := []
     for id in checkedIds
-        GuiOrder.Push(id)
+        for L in Layouts
+            if (L.id = id)
+                GuiOrder.Push(id)
     for L in Layouts {
         found := false
         for id in GuiOrder
             if (id = L.id)
                 found := true
-        if !found
+        if (!found && !IsHidden(L.id))
             GuiOrder.Push(L.id)
     }
     lv := SetGui["Langs"]
@@ -586,18 +653,33 @@ MoveLang(dir) {
 }
 
 RefreshLangs() {
-    global Layouts
+    ; טוען מחדש מ-Windows ומסיר מהרשימה שפות לא מסומנות
+    global Layouts, CfgHidden
     chk := CheckedIds()
+    for id in GuiOrder {
+        isChk := false
+        for c in chk
+            if (c = id)
+                isChk := true
+        if (!isChk && !IsHidden(id))
+            CfgHidden .= (CfgHidden = "" ? "" : ",") id
+    }
+    known := GuiOrder.Clone()
     Layouts := LoadLayouts()
     for L in Layouts {
-        known := false
-        for id in GuiOrder
+        isKnown := false
+        for id in known
             if (id = L.id)
-                known := true
-        if !known
+                isKnown := true
+        if (!isKnown && !IsHidden(L.id))
             chk.Push(L.id)   ; שפה חדשה נכנסת מסומנת
     }
     FillLangs(chk)
+}
+
+ShowAllLangs() {
+    global CfgHidden := ""
+    FillLangs(CheckedIds())
 }
 
 FillHistory() {
@@ -625,7 +707,7 @@ SaveFromGui() {
     v := SetGui.Submit(false)
     ids := CheckedIds()
     if (ids.Length < 2) {
-        MsgBox "צריך לסמן לפחות שתי שפות", "ReverseLang", 48
+        MsgBox "Tick at least two languages", "ReverseLang", 48
         return
     }
     CfgLangs := ""
@@ -633,14 +715,14 @@ SaveFromGui() {
         CfgLangs .= (A_Index > 1 ? "," : "") id
     newHk := v.Hk
     if (newHk = "") {
-        MsgBox "צריך לבחור קיצור מקלדת", "ReverseLang", 48
+        MsgBox "Choose a shortcut", "ReverseLang", 48
         return
     }
     if (newHk != CfgHotkey) {
         try {
             Hotkey(newHk, FixSelection, "On")
         } catch {
-            MsgBox "הקיצור הזה לא תקין", "ReverseLang", 48
+            MsgBox "That shortcut is not valid", "ReverseLang", 48
             return
         }
         try Hotkey(CfgHotkey, "Off")
@@ -651,12 +733,12 @@ SaveFromGui() {
     if (v.Auto != CfgAuto) {
         CfgAuto := v.Auto
         CfgAuto ? StartAuto() : StopAuto()
-        CfgAuto ? A_TrayMenu.Check("המרה אוטומטית תוך כדי הקלדה")
-                : A_TrayMenu.Uncheck("המרה אוטומטית תוך כדי הקלדה")
+        CfgAuto ? A_TrayMenu.Check("Auto-fix while typing")
+                : A_TrayMenu.Uncheck("Auto-fix while typing")
     }
     lnk := A_Startup "\ReverseLang.lnk"
     if (v.Startup != !!FileExist(lnk))
-        ToggleStartup("הפעלה עם Windows")
+        ToggleStartup("Start with Windows")
     p := A_ScriptDir "\exceptions.txt"
     try FileDelete p
     FileAppend v.Exc, p, "UTF-8"
@@ -664,6 +746,6 @@ SaveFromGui() {
     SaveSettings()
     A_IconTip := "ReverseLang - " HotkeyLabel(CfgHotkey)
     CloseSettings()
-    ToolTip "נשמר. קיצור: " HotkeyLabel(CfgHotkey)
+    ToolTip "Saved. Shortcut: " HotkeyLabel(CfgHotkey)
     SetTimer () => ToolTip(), -2000
 }
