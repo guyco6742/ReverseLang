@@ -28,6 +28,7 @@ global CfgEnKLID   := IniRead(INI, "General", "EnglishKLID", "00000409")
 global CfgHeKLID   := IniRead(INI, "General", "HebrewKLID", "0000040D")
 global CfgLangs    := IniRead(INI, "General", "Languages", "")   ; HKL בהקסה, מופרדים בפסיק, לפי סדר המעבר
 global CfgHidden   := IniRead(INI, "General", "HiddenLanguages", "")
+global CfgDebug    := IniRead(INI, "General", "Debug", "0") = "1"
 global Layouts     := LoadLayouts()
 if !FileExist(INI)
     SaveSettings()
@@ -77,8 +78,8 @@ return
 ; ==========================================================
 FixSelection(*) {
     global Last, wordBuf
-    for k in ["Ctrl", "Alt", "Shift", "LWin", "RWin"]
-        KeyWait k, "T1"
+    ; בלי KeyWait: Send משחרר בעצמו את Ctrl/Shift שעדיין לחוצים ומחזיר אותם אחר כך
+    t0 := A_TickCount
     act := ActiveLangs()
     if (act.Length < 2) {
         ShowTip("Select at least two keyboard languages in Settings")
@@ -135,8 +136,10 @@ FixSelection(*) {
         return
     }
 
+    t1 := A_TickCount
     A_Clipboard := StrReplace(out, "`n", "`r`n")
     Send "^v"
+    t2 := A_TickCount
     Sleep 200
     A_Clipboard := saved
     PostLayout(tgt.hkl)
@@ -150,7 +153,10 @@ FixSelection(*) {
     }
     Last := {orig: orig, src: src, idx: idx, out: out, t: A_TickCount, keys: KeyCount}
     wordBuf := ""
-    ShowTip(tgt.name)
+    if CfgDebug
+        ShowTip(tgt.name "  [prepare " (t1 - t0) " ms, paste " (t2 - t1) " ms]", 4000)
+    else
+        ShowTip(tgt.name)
 }
 
 ; ==========================================================
@@ -332,9 +338,9 @@ CountKey(*) {
     KeyCount += 1
 }
 
-ShowTip(msg) {
+ShowTip(msg, ms := 1000) {
     ToolTip msg
-    SetTimer () => ToolTip(), -1000
+    SetTimer () => ToolTip(), -ms
 }
 
 ; ==========================================================
