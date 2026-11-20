@@ -1,6 +1,9 @@
 ﻿#Requires AutoHotkey v2.0
 #SingleInstance Force
 Persistent
+SendMode "Input"
+SetKeyDelay -1, -1
+; ה-InputHooks (I1) מתעלמים מהקשות שהסקריפט שולח ב-SendLevel 0, כך שהן לא נספרות כהקלדה של המשתמש
 
 ; ==========================================================
 ;  ReverseLang - ממיר טקסט שהוקלד בשפת מקלדת לא נכונה
@@ -25,6 +28,7 @@ global CfgEnKLID   := IniRead(INI, "General", "EnglishKLID", "00000409")
 global CfgHeKLID   := IniRead(INI, "General", "HebrewKLID", "0000040D")
 global CfgLangs    := IniRead(INI, "General", "Languages", "")   ; HKL בהקסה, מופרדים בפסיק, לפי סדר המעבר
 global CfgHidden   := IniRead(INI, "General", "HiddenLanguages", "")
+global CfgDebug    := IniRead(INI, "General", "Debug", "0") = "1"
 global Layouts     := LoadLayouts()
 if !FileExist(INI)
     SaveSettings()
@@ -74,9 +78,8 @@ return
 ; ==========================================================
 FixSelection(*) {
     global Last, wordBuf
-    for k in ["Ctrl", "Alt", "Shift", "LWin", "RWin"]
-        KeyWait k, "T1"
-    SendLevel 1   ; ההקשות שלנו לא נספרות כהקלדה של המשתמש
+    ; בלי KeyWait: Send משחרר בעצמו את Ctrl/Shift שעדיין לחוצים ומחזיר אותם אחר כך
+    t0 := A_TickCount
     act := ActiveLangs()
     if (act.Length < 2) {
         ShowTip("Select at least two keyboard languages in Settings")
@@ -87,9 +90,11 @@ FixSelection(*) {
     ; לחיצה חוזרת מיד אחרי המרה: עוברים לשפה הבאה
     repeat := IsObject(Last) && A_TickCount - Last.t < 8000 && KeyCount - Last.keys <= 1
     if repeat {
+        ; מוחקים את ההמרה הקודמת עם Backspace. לא מסמנים עם Shift+Left,
+        ; כי בטקסט מימין לשמאל (עברית, ערבית) החץ זז קדימה ולא אחורה
         n := StrLen(Last.out)
-        Send "+{Left " n "}"
-        Sleep 40
+        Send "{Backspace " n "}"
+        Sleep 20
         orig := Last.orig, src := Last.src, idx := Last.idx + 1
     } else {
         A_Clipboard := ""
@@ -131,8 +136,10 @@ FixSelection(*) {
         return
     }
 
+    t1 := A_TickCount
     A_Clipboard := StrReplace(out, "`n", "`r`n")
     Send "^v"
+    t2 := A_TickCount
     Sleep 200
     A_Clipboard := saved
     PostLayout(tgt.hkl)
@@ -146,7 +153,10 @@ FixSelection(*) {
     }
     Last := {orig: orig, src: src, idx: idx, out: out, t: A_TickCount, keys: KeyCount}
     wordBuf := ""
-    ShowTip(tgt.name)
+    if CfgDebug
+        ShowTip(tgt.name "  [prepare " (t1 - t0) " ms, paste " (t2 - t1) " ms]", 4000)
+    else
+        ShowTip(tgt.name)
 }
 
 ; ==========================================================
@@ -328,9 +338,9 @@ CountKey(*) {
     KeyCount += 1
 }
 
-ShowTip(msg) {
+ShowTip(msg, ms := 1000) {
     ToolTip msg
-    SetTimer () => ToolTip(), -1000
+    SetTimer () => ToolTip(), -ms
 }
 
 ; ==========================================================
@@ -407,10 +417,8 @@ TryAutoFix() {
     if (conv = "")
         return
     AddHistory(w, conv)
-    SendLevel 1
     Send "{Backspace " (StrLen(w) + 1) "}"
     SendText conv " "
-    SendLevel 0
     SetLayout(lang)
 }
 
