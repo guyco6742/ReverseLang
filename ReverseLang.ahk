@@ -1,6 +1,9 @@
 ﻿#Requires AutoHotkey v2.0
 #SingleInstance Force
 Persistent
+SendMode "Input"
+SetKeyDelay -1, -1
+; ה-InputHooks (I1) מתעלמים מהקשות שהסקריפט שולח ב-SendLevel 0, כך שהן לא נספרות כהקלדה של המשתמש
 
 ; ==========================================================
 ;  ReverseLang - ממיר טקסט שהוקלד בשפת מקלדת לא נכונה
@@ -76,7 +79,6 @@ FixSelection(*) {
     global Last, wordBuf
     for k in ["Ctrl", "Alt", "Shift", "LWin", "RWin"]
         KeyWait k, "T1"
-    SendLevel 1   ; ההקשות שלנו לא נספרות כהקלדה של המשתמש
     act := ActiveLangs()
     if (act.Length < 2) {
         ShowTip("Select at least two keyboard languages in Settings")
@@ -91,7 +93,7 @@ FixSelection(*) {
         ; כי בטקסט מימין לשמאל (עברית, ערבית) החץ זז קדימה ולא אחורה
         n := StrLen(Last.out)
         Send "{Backspace " n "}"
-        Sleep 40
+        Sleep 20
         orig := Last.orig, src := Last.src, idx := Last.idx + 1
     } else {
         A_Clipboard := ""
@@ -409,10 +411,8 @@ TryAutoFix() {
     if (conv = "")
         return
     AddHistory(w, conv)
-    SendLevel 1
     Send "{Backspace " (StrLen(w) + 1) "}"
     SendText conv " "
-    SendLevel 0
     SetLayout(lang)
 }
 
